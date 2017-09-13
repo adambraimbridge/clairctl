@@ -69,13 +69,13 @@ var scanCmd = &cobra.Command{
 				log.Fatalf("rendering analysis: %v", err)
 			}
 
-			imageName := strings.Replace(analyzes.ImageName, "/", "-", -1)
-			if analyzes.Tag != "" {
-				imageName += "-" + analyzes.Tag
+			imageName := strings.Replace(analysis.ImageName, "/", "-", -1)
+			if analysis.Tag != "" {
+				imageName += "-" + analysis.Tag
 			}
 			switch clair.Report.Format {
 			case "html":
-				html, err := clair.ReportAsHTML(analyzes)
+				html, err := clair.ReportAsHTML(analysis)
 				if err != nil {
 					fmt.Println(errInternalError)
 					log.Fatalf("generating HTML report: %v", err)
@@ -87,7 +87,7 @@ var scanCmd = &cobra.Command{
 				}
 
 			case "json":
-				json, err := xstrings.ToIndentJSON(analyzes)
+				json, err := xstrings.ToIndentJSON(analysis)
 
 				if err != nil {
 					fmt.Println(errInternalError)
@@ -105,7 +105,7 @@ var scanCmd = &cobra.Command{
 			}
 
 			if viper.GetString("notifier.endpoint") != "" {
-				checkAndNotify(analyzes)
+				checkAndNotify(analysis)
 			}
 
 		}

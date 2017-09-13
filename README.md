@@ -46,6 +46,7 @@ Available Commands:
   push        Push Docker image to Clair
   report      Generate Docker Image vulnerabilities report
   version     Get Versions of clairctl and underlying services
+  scanCluster Will scan all images in a kubernetes cluster
 
 Flags:
       --config string      config file (default is ./.clairctl.yml)
