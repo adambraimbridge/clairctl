@@ -55,59 +55,59 @@ var scanCmd = &cobra.Command{
 				log.Fatalf("retrieving manifest for %q: %v", imageName, err)
 			}
 
-			if err := clair.Push(image, manifest); err != nil {
-				if err != nil {
-					fmt.Println(errInternalError)
-					log.Fatalf("pushing image %q: %v", image.String(), err)
-				}
-			}
-
-			analysis := clair.Analyze(image, manifest)
-			err = template.Must(template.New("analysis").Parse(analyzeTplt)).Execute(os.Stdout, analysis)
+			err = clair.Push(image, manifest);
 			if err != nil {
 				fmt.Println(errInternalError)
-				log.Fatalf("rendering analysis: %v", err)
-			}
+				log.Errorf("pushing image %q: %v", image.String(), err)
+				postFailedNotification(imageName, err)
+			} else {
 
-			imageName := strings.Replace(analysis.ImageName, "/", "-", -1)
-			if analysis.Tag != "" {
-				imageName += "-" + analysis.Tag
-			}
-			switch clair.Report.Format {
-			case "html":
-				html, err := clair.ReportAsHTML(analysis)
+				analysis := clair.Analyze(image, manifest)
+				err = template.Must(template.New("analysis").Parse(analyzeTplt)).Execute(os.Stdout, analysis)
 				if err != nil {
 					fmt.Println(errInternalError)
-					log.Fatalf("generating HTML report: %v", err)
-				}
-				err = clair.SaveReport(imageName, string(html))
-				if err != nil {
-					fmt.Println(errInternalError)
-					log.Fatalf("saving HTML report: %v", err)
+					log.Fatalf("rendering analysis: %v", err)
 				}
 
-			case "json":
-				json, err := xstrings.ToIndentJSON(analysis)
-
-				if err != nil {
-					fmt.Println(errInternalError)
-					log.Fatalf("indenting JSON: %v", err)
+				imageName := strings.Replace(analysis.ImageName, "/", "-", -1)
+				if analysis.Tag != "" {
+					imageName += "-" + analysis.Tag
 				}
-				err = clair.SaveReport(imageName, string(json))
-				if err != nil {
-					fmt.Println(errInternalError)
-					log.Fatalf("saving JSON report: %v", err)
+				switch clair.Report.Format {
+				case "html":
+					html, err := clair.ReportAsHTML(analysis)
+					if err != nil {
+						fmt.Println(errInternalError)
+						log.Fatalf("generating HTML report: %v", err)
+					}
+					err = clair.SaveReport(imageName, string(html))
+					if err != nil {
+						fmt.Println(errInternalError)
+						log.Fatalf("saving HTML report: %v", err)
+					}
+
+				case "json":
+					json, err := xstrings.ToIndentJSON(analysis)
+
+					if err != nil {
+						fmt.Println(errInternalError)
+						log.Fatalf("indenting JSON: %v", err)
+					}
+					err = clair.SaveReport(imageName, string(json))
+					if err != nil {
+						fmt.Println(errInternalError)
+						log.Fatalf("saving JSON report: %v", err)
+					}
+
+				default:
+					fmt.Printf("Unsupported Report format: %v", clair.Report.Format)
+					log.Fatalf("Unsupported Report format: %v", clair.Report.Format)
 				}
 
-			default:
-				fmt.Printf("Unsupported Report format: %v", clair.Report.Format)
-				log.Fatalf("Unsupported Report format: %v", clair.Report.Format)
+				if viper.GetString("notifier.endpoint") != "" {
+					checkAndNotify(analysis)
+				}
 			}
-
-			if viper.GetString("notifier.endpoint") != "" {
-				checkAndNotify(analysis)
-			}
-
 		}
 	},
 }
@@ -160,6 +160,24 @@ func checkAndNotify(analyzes clair.ImageAnalysis) {
 func postNotification(severity string, analyzes clair.ImageAnalysis, endpoint string) {
 	var jsonStr = []byte(fmt.Sprintf(`{"text":"There are some %s vulnerabilites in the image %s"}`,
 		severity, analyzes.ImageName))
+	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(jsonStr))
+	if err != nil {
+		log.Infof("Err posting notification' request: %v", err)
+	}
+	response, err := (&http.Client{}).Do(req)
+	if err != nil {
+		log.Infof("Err posting notification: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != 200 {
+		log.Infof("Err posting notification: returned %v statusCode", response.StatusCode)
+	}
+}
+
+func postFailedNotification(imageName string, err error) {
+	endpoint := viper.GetString("notifier.endpoint")
+	var jsonStr = []byte(fmt.Sprintf(`{"text":"Error scanning image %s error %v"}`,
+		imageName, err))
 	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(jsonStr))
 	if err != nil {
 		log.Infof("Err posting notification' request: %v", err)
